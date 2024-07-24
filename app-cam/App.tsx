@@ -1,111 +1,115 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Text, View, Button, StyleSheet } from 'react-native';
-
 import { useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import * as MediaLibrary from 'expo-media-library';
-import { CameraView } from "expo-camera";
+import * as Sharing from 'expo-sharing';
+import { CameraView } from 'expo-camera';
 
 import { CameraComponent } from './src/components/Camera';
-import { VideoPlayer } from './src/components/VideoPlayer';
+import VideoPlayer from './src/components/VideoPlayer';
 
 export default function App() {
-  // Permissions Album / Camera / Microphone / Library
-  const [albums, setAlbums] = useState<MediaLibrary.Album[]>([]); // Alteração aqui
+  // Permissions Camera / Microphone / Library
   const [permissionCam, requestPermissionCam] = useCameraPermissions();
   const [permissionMicro, requestPermissionMicro] = useMicrophonePermissions();
   const [permissionResponse, requestPermissionLibrary] = MediaLibrary.usePermissions();
   
   // Camera View Props
-  const cameraRef = useRef< CameraView | null>(null);
-  const [isRecording, setIsRecording] = useState<boolean | undefined>(undefined);
+  const cameraRef = useRef<CameraView>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   
-  // Funçoes Camera
-  const [video, setVideo] = useState<{uri:string}| undefined>(); 
-  
+  // Funções Camera
+  const [video, setVideo] = useState<any>(); 
+
   useEffect(() => {
-    getPermissions();
-    getLibrary();
+    (async () => {
+      const camStatus = await requestPermissionCam();
+      const micStatus = await requestPermissionMicro();
+      const libStatus = await requestPermissionLibrary();
+
+      if (!camStatus.granted || !micStatus.granted || !libStatus.granted) {
+        return (
+          <View style={styles.alert}>
+            <Text style={styles.message}>We need your permission to show the camera and microphone</Text>
+            <Button onPress={requestPermissionLibrary} title="Grant permission library" />
+            <Button onPress={requestPermissionCam} title="Grant permission camera" />
+            <Button onPress={requestPermissionMicro} title="Grant permission microphone" />
+          </View>
+        );
+      }
+    })();
   }, []);
-
-  const getPermissions = async () => {
-    const { status: camStatus } = await requestPermissionCam();
-    const { status: micStatus } = await requestPermissionMicro();
-    const { status: libStatus } = await requestPermissionLibrary();
   
-    // All granted
-
-    if (camStatus !== 'granted' || micStatus !== 'granted' || libStatus !== 'granted') {
-      return (
-        <View style={styles.alert}>
-          <Text style={styles.message}>We need your permission to show the camera and microphone</Text>
-          <Button onPress={requestPermissionLibrary} title="Grant permission library" />
-          <Button onPress={requestPermissionCam} title="Grant permission camera" />
-          <Button onPress={requestPermissionMicro} title="Grant permission microphone" />
-        </View>
-      );
-    }
-  };
-  
-
-  const getLibrary = async () => {
-    try {
-      const fetchedAlbums = await MediaLibrary.getAlbumsAsync({
-        includeSmartAlbums: true,
-      });
-      setAlbums(fetchedAlbums);
-    } catch {
-      setAlbums([]); 
-    }
-  };
-  
-  const recordVideo = async () => {  
+  const recordVideo = async () => {
     setIsRecording(true);
-    
+    setIsPaused(false);
+
     if (cameraRef.current) {
       try {
-        const videoData = await cameraRef.current.recordAsync();
-        if (videoData) {
-          console.log('Camera reference:', cameraRef.current);
-          console.log('Video data:', videoData);
-          console.log('Video URI:', videoData?.uri);
-          setVideo(videoData);
-        } else {
-          console.error("No video data returned");
-        }
+        await cameraRef.current.recordAsync().then((recordedVideo) => {
+          setVideo(recordedVideo);
+        });
       } catch (error) {
-        console.error("Error recording video:", error);
+        console.error('ERRO', error);
+      } finally {
+        setIsRecording(false);
       }
-    } else {
-      console.error("Camera reference is not available");
     }
   };
-
-  const stopVideo = () => {  
-
+    
+  const stopVideo = () => {
     setIsRecording(false);
     if (cameraRef.current) {
       cameraRef.current.stopRecording();
-      console.log(video);
     }
   };
 
-  if(video){
+  const pauseVideo = () => {
+    setIsPaused(true);
+    
+  };
 
-    const onShare = () =>{
+  const resumeVideo = () => {
+    setIsPaused(false);
+    
+  };
 
-    }
+  if (video) {
+    const shareVideo = () => {
+      Sharing.shareAsync(video.uri).then(() => {});
+    };
 
-    const onSave = () =>{
-    }
-      
-    return <VideoPlayer video={video} onShare={onShare} onSave={onSave} onDiscart={()=>{}} />
+    const saveVideo = () => {
+      MediaLibrary.saveToLibraryAsync(video.uri).then(() => {
+        setVideo(undefined);
+      });
+    };
+
+    const onDiscart = () => {
+      setVideo(undefined);
+    };
+
+    return (
+      <VideoPlayer 
+        video={video} 
+        onShare={shareVideo} 
+        onSave={saveVideo} 
+        onDiscart={onDiscart} 
+      />
+    );
   }
 
-
   return (
-    <View style={styles.container}>
-      <CameraComponent cameraRef={cameraRef} isRecording={isRecording} onRecord={recordVideo} onStopRecording={stopVideo} />
-    </View>
+    <CameraComponent 
+      cameraRef={cameraRef} 
+      isRecording={isRecording} 
+      isPaused={isPaused}
+      onRecord={recordVideo} 
+      onStopRecording={stopVideo} 
+      onPauseRecording={pauseVideo} 
+      onResumeRecording={resumeVideo} 
+    />
   );
 }
 

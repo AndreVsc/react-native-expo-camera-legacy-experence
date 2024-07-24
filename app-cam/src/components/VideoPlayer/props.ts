@@ -1,5 +1,5 @@
 export interface VideoPlayerProps{
-    video: {uri:string}| undefined;
+    video: any;
     onShare:()=>void;
     onSave:()=>void;
     onDiscart:()=>void;
